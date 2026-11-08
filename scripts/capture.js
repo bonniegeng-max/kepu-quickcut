@@ -13,27 +13,30 @@ let DUR = parseFloat(process.argv[5]) || null;
 
 if (!HTML_FILE) { console.error('usage: node capture.js <anim.html> <frames_dir> [fps] [dur]'); process.exit(1); }
 
-// 自动发现 Playwright 缓存的 headless chromium
+// 自动发现 Playwright 缓存的 headless chromium（缺缓存时兜底用系统 Chrome）
 function findHeadless() {
   const cache = path.join(os.homedir(), 'Library/Caches/ms-playwright');
-  if (!fs.existsSync(cache)) throw new Error('playwright cache not found: ' + cache);
-  const dirs = fs.readdirSync(cache).filter(d => d.startsWith('chromium_headless_shell-')).sort();
-  for (const d of dirs.reverse()) {
-    const base = path.join(cache, d);
-    for (const sub of ['chrome-headless-shell-mac-arm64/chrome-headless-shell',
-                       'chrome-headless-shell-mac/chrome-headless-shell']) {
-      const p = path.join(base, sub);
-      if (fs.existsSync(p)) return p;
+  if (fs.existsSync(cache)) {
+    const dirs = fs.readdirSync(cache).filter(d => d.startsWith('chromium_headless_shell-')).sort();
+    for (const d of dirs.reverse()) {
+      const base = path.join(cache, d);
+      for (const sub of ['chrome-headless-shell-mac-arm64/chrome-headless-shell',
+                         'chrome-headless-shell-mac/chrome-headless-shell']) {
+        const p = path.join(base, sub);
+        if (fs.existsSync(p)) return p;
+      }
     }
   }
-  throw new Error('no chrome-headless-shell found in ' + cache);
+  const chrome = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+  if (fs.existsSync(chrome)) return chrome;
+  throw new Error('no chrome found: run `playwright install chromium-headless-shell`, or install Google Chrome');
 }
 
 (async () => {
   const HEADLESS = findHeadless();
   const HTML = 'file://' + path.resolve(HTML_FILE);
   fs.mkdirSync(OUT, { recursive: true });
-  const browser = await chromium.launch({ executablePath: HEADLESS });
+  const browser = await chromium.launch({ executablePath: HEADLESS, headless: true, args: ['--no-sandbox', '--force-device-scale-factor=1'] });
   const page = await browser.newPage({ viewport: { width: 1080, height: 1920 } });
   await page.goto(HTML);
   await page.waitForTimeout(800); // 字体加载
